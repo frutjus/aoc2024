@@ -27,7 +27,7 @@ defmodule AoC do
 end
 
 import Enum, except: [split: 2]
-import String
+import String, only: [split: 2, to_integer: 1]
 
 defmodule Day5 do
     # This was an attempt to figure out the full list of pages that each page has to be to the left of
@@ -71,7 +71,7 @@ reject(updates, fn update ->
     end)
 end)
 |> map(fn update ->
-    filter(update, fn page -> Kernel.length(filter(rules[page], fn r -> r in update end)) == div(Kernel.length(update)-1,2) end)
+    filter(update, fn page -> length(filter(rules[page], fn r -> r in update end)) == div(Kernel.length(update)-1,2) end)
     |> hd
     |> to_integer()
 end)
