@@ -49,7 +49,7 @@ defmodule AoC do
         if f.(l) < f.(elem) do
             [l | insert_ordered(list, elem, f)]
         else
-            [elem | list]
+            [elem, l | list]
         end
     end
 end
@@ -100,7 +100,7 @@ end
 # IO.puts("[iterations]")
 
 reduce(
-    reverse(filled) |> take(10000),
+    reverse(filled),
     {[], empty_spaces},
     fn {fsize, fid, findex}, {out, spaces} ->
         # find new location for file
@@ -108,7 +108,7 @@ reduce(
         # or keep it in the same place
         {size_found, new_index} =
         for s <- fsize..9,
-            [{_,_,eindex} | _] <- [Map.get(spaces, s, [])],
+            [{_,_,eindex} | _] <- [spaces[s]],
             eindex < findex
             do {s, eindex}
         end |> then(fn
@@ -120,7 +120,6 @@ reduce(
         new_spaces = if size_found == nil do
             spaces
         else
-            IO.inspect({fsize, fid, findex})
             removed = Map.update!(spaces, size_found, fn [_ | es] -> es end)
             if size_found > fsize do
                 new_esize = size_found - fsize
@@ -137,14 +136,11 @@ reduce(
         {[{fsize, fid, new_index} | out], new_spaces} #|> print_state.()
     end
 )
-#|> print_state.()
 |> elem(0)
 |> map(fn {size, id, index} ->
     max_index = index + size - 1
     min_index = Kernel.max(index - 1, 0)
-    answer = (div(max_index * (max_index + 1), 2) - div(min_index * (min_index + 1), 2)) * id
-    #IO.gets("size = #{size}, id = #{id}, index = #{index}, max_index = #{max_index}, min_index = #{min_index}, answer = #{answer}")
-    answer
+    (div(max_index * (max_index + 1), 2) - div(min_index * (min_index + 1), 2)) * id
 end)
 |> sum()
 |> IO.inspect()
