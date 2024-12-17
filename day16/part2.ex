@@ -64,7 +64,7 @@ defmodule AoC do
         for {rw, r} <- str
                     |> String.split("\r\n")
                     |> Enum.with_index(),
-            {ch, c} <-  rw
+            {ch, c} <- rw
                     |> String.split("", trim: true)
                     |> Enum.with_index()
             do
@@ -93,100 +93,75 @@ end
 
 import Enum
 
-{start_position, tiles} =
-    "day16/sample1.txt"
+%{"S" => [start_position],
+  "E" => [end_position],
+  "." => empty_tiles,
+  "#" => _
+} = "day16/input.txt"
     |> File.read!()
     |> AoC.grid_to_coords()
-    |> filter(fn {_,c} -> c != "#" end)
-    |> map(fn {cd,c} -> case c do
-        "." -> {cd,:path}
-        "S" -> {cd,:start}
-        "E" -> {cd,:end}
-        end
-    end)
-    |> split_with(fn {_,t} -> t == :start end)
-    |> then(fn {[{start,:start}], tiles} ->
-        {start, into(tiles, %{})}
-    end)
+    |> group_by(fn {_,c} -> c end, fn {pos,_} -> pos end)
 
-row_max = map(tiles, fn {{r,_},_} -> r end) |> max() |> then(& &1 + 1)
-col_max = map(tiles, fn {{_,c},_} -> c end) |> max() |> then(& &1 + 1)
+_row_max = map(empty_tiles, fn {r,_} -> r end) |> max() |> then(& &1 + 1)
+_col_max = map(empty_tiles, fn {_,c} -> c end) |> max() |> then(& &1 + 1)
 
 AoC.iterate_until(
-    {[{start_position, :rt, 0, [[start_position]]}], tiles},
-    fn {[{{r,c}, dir, cost, routes} | positions], unvisited} ->
-        new_positions =
-        for {neighbour, new_dir} <- [
-                {{r-1,c}, :up},
-                {{r,c+1}, :rt},
-                {{r+1,c}, :dn},
-                {{r,c-1}, :lf}],
-            Map.has_key?(unvisited, neighbour)
-            do
-            move_cost = if new_dir == dir do 1 else 1001 end
-            other_routes =
-                positions
-                |> take_while(fn {_,_,c,_} -> c == cost end)
-                |> reject(fn {{r1,c1}, dir1, _, _} ->
-                    for {neighbour1, new_dir1} <- [
-                            {{r1-1,c1}, :up},
-                            {{r1,c1+1}, :rt},
-                            {{r1+1,c1}, :dn},
-                            {{r1,c1-1}, :lf}],
-                            neighbour1 == neighbour,
-                            move_cost1 = (if new_dir1 == dir1 do 1 else 1001 end),
-                            move_cost1 == move_cost
-                        do
-                        nil
-                    end |> empty?()
-                end)
-                |> map(fn {_,_,_,rs} -> rs end)
-                |> concat()
-            new_routes = map(routes ++ other_routes, fn rt -> [neighbour | rt] end)
-            {neighbour, new_dir, cost + move_cost, new_routes}
-        end
-        
-        new_unvisited = Map.drop(unvisited, map(new_positions, fn {pos,_,_,_} -> pos end))
-
-        for r <- 0..row_max do
-            for c <- 0..col_max do
-                case new_unvisited[{r,c}] do
-                    :end -> IO.write(IO.ANSI.color(1) <> "E" <> IO.ANSI.reset())
-                    :path -> IO.write(IO.ANSI.color(7) <> "." <> IO.ANSI.reset())
-                    nil -> case tiles[{r,c}] do
-                        :end -> IO.write(IO.ANSI.color(1) <> "E" <> IO.ANSI.reset())
-                        :path -> if any?(routes, & member?(&1, {r,c})) do
-                            IO.write(IO.ANSI.bright() <> IO.ANSI.color(2) <> "O" <> IO.ANSI.reset())
-                        else
-                            IO.write(IO.ANSI.color(2) <> "O" <> IO.ANSI.reset())
-                        end
-                        nil -> if {r,c} == start_position do
-                            IO.write(IO.ANSI.color(1) <> "S" <> IO.ANSI.reset())
-                        else
-                            IO.write(IO.ANSI.color(15) <> "#" <> IO.ANSI.reset())
-                        end
-                    end
-                end
+    %{live_routes: [[{start_position, :rt, 0}]],
+      tile_routes: map([end_position | empty_tiles], fn pos ->
+        {pos, %{up: {:infinity, []},
+                rt: {:infinity, []},
+                dn: {:infinity, []},
+                lf: {:infinity, []}}}
+        end) |> into(%{})
+    },
+    fn state ->
+        new_live_routes =
+            for [{{r,c},dir,cost} | _] = route <- state.live_routes,
+                {neighbour, new_dir} <- [
+                    {{r-1,c}, :up},
+                    {{r,c+1}, :rt},
+                    {{r+1,c}, :dn},
+                    {{r,c-1}, :lf}],
+                (case dir do
+                    :up -> new_dir != :dn
+                    :rt -> new_dir != :lf
+                    :dn -> new_dir != :up
+                    :lf -> new_dir != :rt
+                end),
+                new_cost = (if new_dir == dir do 1 else 1001 end + cost),
+                Map.has_key?(state.tile_routes, neighbour),
+                {existing_cost, _} = state.tile_routes[neighbour][new_dir],
+                new_cost <= existing_cost
+                do
+                [{neighbour, new_dir, new_cost} | route]
             end
-            IO.write("\r\n")
-        end
-        IO.gets("")
-
-        case split_with(new_positions, fn {pos,_,_,_} -> tiles[pos] == :end end) do
-            {[{_,_,_,rs}], _} -> {:stop, rs}
-            {[], _} ->
-                all_new_positions = reduce(
-                    new_positions,
-                    positions,
-                    fn p, ps ->
-                        AoC.insert_ordered(ps, p, fn {_,_,c,_} -> c end)
-                    end
-                )
-                {:iterate, {all_new_positions, new_unvisited}}
+        
+        new_tile_routes =
+            reduce(
+                new_live_routes,
+                state.tile_routes,
+                fn [{pos, dir, cost} | _] = route, tile_routes ->
+                    update_in(tile_routes[pos][dir], fn {existing_cost, existing_routes} ->
+                        if cost < existing_cost do
+                            {cost, [route]}
+                        else
+                            {existing_cost, [route | existing_routes]}
+                        end
+                    end)
+                end
+            )
+        
+        if empty?(new_live_routes) do
+            {:stop, new_tile_routes}
+        else
+            {:iterate, %{live_routes: new_live_routes, tile_routes: new_tile_routes}}
         end
     end
-)
+)[end_position]
+|> min_by(fn {_,{c,_}} -> c end)
+|> then(fn {_,{_,r}} -> r end)
 |> concat()
+|> map(fn {pos,_,_} -> pos end)
 |> uniq()
 |> count()
 |> IO.inspect()
